@@ -191,9 +191,9 @@ namespace NRules
 
         IEnumerable<object> GetLinkedKeys(Activation activation);
         object GetLinked(Activation activation, object key);
-        void InsertLinked(Activation activation, object key, object fact);
-        void UpdateLinked(Activation activation, object key, object fact);
-        void RetractLinked(Activation activation, object key, object fact);
+        void InsertLinked(Activation activation, IEnumerable<KeyValuePair<object, object>> keyedFacts);
+        void UpdateLinked(Activation activation, IEnumerable<KeyValuePair<object, object>> keyedFacts);
+        void RetractLinked(Activation activation, IEnumerable<KeyValuePair<object, object>> keyedFacts);
     }
 
     /// <summary>
@@ -281,6 +281,8 @@ namespace NRules
                 }
 
                 _network.PropagateAssert(_executionContext, toPropagate);
+
+                UnlinkFacts();
             }
             return result;
         }
@@ -337,6 +339,8 @@ namespace NRules
                 }
 
                 _network.PropagateUpdate(_executionContext, toPropagate);
+
+                UnlinkFacts();
             }
             return result;
         }
@@ -392,6 +396,8 @@ namespace NRules
                 {
                     _workingMemory.RemoveFact(fact);
                 }
+
+                UnlinkFacts();
             }
             return result;
         }
@@ -419,65 +425,92 @@ namespace NRules
             return factWrapper?.Object;
         }
 
-        public void InsertLinked(Activation activation, object key, object fact)
+        public void InsertLinked(Activation activation, IEnumerable<KeyValuePair<object, object>> keyedFacts)
         {
-            if (key == null)
+            var toAdd = new List<Tuple<object, Fact>>();
+            var toPropagate = new List<Fact>();
+            foreach (var keyedFact in keyedFacts)
             {
-                throw new ArgumentNullException(nameof(key));
+                var key = keyedFact.Key;
+                var factWrapper = _workingMemory.GetLinkedFact(activation, key);
+                if (factWrapper != null)
+                {
+                    throw new ArgumentException($"Linked fact already exists. Key={key}");
+                }
+                factWrapper = new SyntheticFact(keyedFact.Value);
+                factWrapper.Source = new LinkedFactSource(activation);
+                toAdd.Add(System.Tuple.Create(key, factWrapper));
+                toPropagate.Add(factWrapper);
             }
-            if (fact == null)
+            foreach (var item in toAdd)
             {
-                throw new ArgumentNullException(nameof(fact));
+                _workingMemory.AddLinkedFact(activation, item.Item1, item.Item2);
             }
-            var factWrapper = _workingMemory.GetLinkedFact(activation, key);
-            if (factWrapper != null)
-            {
-                throw new ArgumentException($"Linked fact already exists. Key={key}", nameof(fact));
-            }
-            factWrapper = new SyntheticFact(fact);
-            factWrapper.Source = new LinkedFactSource(activation);
-            _workingMemory.AddLinkedFact(activation, key, factWrapper);
-            _network.PropagateAssert(_executionContext, new List<Fact> {factWrapper});
+            _network.PropagateAssert(_executionContext, toPropagate);
         }
 
-        public void UpdateLinked(Activation activation, object key, object fact)
+        public void UpdateLinked(Activation activation, IEnumerable<KeyValuePair<object, object>> keyedFacts)
         {
-            if (key == null)
+            var toUpdate = new List<Tuple<object, Fact, object>>();
+            var toPropagate = new List<Fact>();
+            foreach (var keyedFact in keyedFacts)
             {
-                throw new ArgumentNullException(nameof(key));
+                var key = keyedFact.Key;
+                var factWrapper = _workingMemory.GetLinkedFact(activation, key);
+                if (factWrapper == null)
+                {
+                    throw new ArgumentException($"Linked fact does not exist. Key={key}");
+                }
+                factWrapper.Source = new LinkedFactSource(activation);
+                toUpdate.Add(System.Tuple.Create(key, factWrapper, keyedFact.Value));
+                toPropagate.Add(factWrapper);
             }
-            if (fact == null)
+            foreach (var item in toUpdate)
             {
-                throw new ArgumentNullException(nameof(fact));
+                _workingMemory.UpdateLinkedFact(activation, item.Item1, item.Item2, item.Item3);
             }
-            var factWrapper = _workingMemory.GetLinkedFact(activation, key);
-            if (factWrapper == null)
-            {
-                throw new ArgumentException($"Linked fact does not exist. Key={key}", nameof(fact));
-            }
-            factWrapper.Source = new LinkedFactSource(activation);
-            _workingMemory.UpdateLinkedFact(activation, key, factWrapper, fact);
-            _network.PropagateUpdate(_executionContext, new List<Fact> {factWrapper});
+            _network.PropagateUpdate(_executionContext, toPropagate);
         }
 
-        public void RetractLinked(Activation activation, object key, object fact)
+        public void RetractLinked(Activation activation, IEnumerable<KeyValuePair<object, object>> keyedFacts)
         {
-            if (key == null)
+            var toRemove = new List<Tuple<object, Fact>>();
+            var toPropagate = new List<Fact>();
+            foreach (var keyedFact in keyedFacts)
             {
-                throw new ArgumentNullException(nameof(key));
+                var key = keyedFact.Key;
+                var factWrapper = _workingMemory.GetFact(keyedFact.Value);
+                if (factWrapper == null)
+                {
+                    throw new ArgumentException($"Linked fact does not exist. Key={key}");
+                }
+                factWrapper.Source = new LinkedFactSource(activation);
+                toRemove.Add(System.Tuple.Create(key, factWrapper));
+                toPropagate.Add(factWrapper);
             }
-            if (fact == null)
+            _network.PropagateRetract(_executionContext, toPropagate);
+            foreach (var item in toRemove)
             {
-                throw new ArgumentNullException(nameof(fact));
+                _workingMemory.RemoveLinkedFact(activation, item.Item1, item.Item2);
+                item.Item2.Source = null;
             }
-            var factWrapper = _workingMemory.GetFact(fact);
-            if (factWrapper == null)
+        }
+
+        private void UnlinkFacts()
+        {
+            var unlinkQueue = _executionContext.UnlinkQueue;
+            while (unlinkQueue.Count > 0)
             {
-                throw new ArgumentException($"Linked fact does not exist. Key={key}", nameof(fact));
+                var activation = unlinkQueue.Dequeue();
+                var linkedKeys = GetLinkedKeys(activation);
+                var keyedFacts = new List<KeyValuePair<object, object>>();
+                foreach (var key in linkedKeys)
+                {
+                    var linkedFact = GetLinked(activation, key);
+                    keyedFacts.Add(new KeyValuePair<object, object>(key, linkedFact));
+                }
+                RetractLinked(activation, keyedFacts);
             }
-            _network.PropagateRetract(_executionContext, new List<Fact> {factWrapper});
-            _workingMemory.RemoveLinkedFact(activation, key, factWrapper);
-            factWrapper.Source = null;
         }
 
         public int Fire()
@@ -488,15 +521,16 @@ namespace NRules
         public int Fire(int maxRulesNumber)
         {
             int ruleFiredCount = 0;
-            while (!_agenda.IsEmpty() && ruleFiredCount < maxRulesNumber)
+            while (!_agenda.IsEmpty && ruleFiredCount < maxRulesNumber)
             {
                 Activation activation = _agenda.Pop();
                 IActionContext actionContext = new ActionContext(this, activation);
 
                 _actionExecutor.Execute(_executionContext, actionContext);
-                activation.RaiseRuleFired();
-
                 ruleFiredCount++;
+
+                UnlinkFacts();
+
                 if (actionContext.IsHalted) break;
             }
             return ruleFiredCount;

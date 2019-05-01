@@ -50,7 +50,7 @@ namespace NRules.IntegrationTests
             //Assert - I
             AssertFiredOnce<ForwardChainingFirstRule>();
             AssertFiredOnce<ForwardChainingSecondRule>();
-            Assert.Equal(1, matchedFact2.Count);
+            Assert.Equal(1, matchedFact2.UpdateCount);
             Assert.Equal("Valid Value 1", matchedFact2.TestProperty);
             Assert.Equal("Valid Value 1", matchedFact3.TestProperty);
 
@@ -62,7 +62,7 @@ namespace NRules.IntegrationTests
             //Assert - II
             AssertFiredTwice<ForwardChainingFirstRule>();
             AssertFiredTwice<ForwardChainingSecondRule>();
-            Assert.Equal(2, matchedFact2.Count);
+            Assert.Equal(2, matchedFact2.UpdateCount);
             Assert.Equal("Valid Value 2", matchedFact2.TestProperty);
             Assert.Equal("Valid Value 2", matchedFact3.TestProperty);
         }
@@ -85,6 +85,7 @@ namespace NRules.IntegrationTests
 
             //Act - II
             Session.Retract(fact1);
+            Session.Fire();
 
             //Assert - II
             Assert.Equal(0, Session.Query<FactType2>().Count());
@@ -163,7 +164,7 @@ namespace NRules.IntegrationTests
 
         public class FactType2
         {
-            public int Count { get; set; } = 1;
+            public int UpdateCount { get; set; } = 1;
             public string TestProperty { get; set; }
         }
 
@@ -181,14 +182,20 @@ namespace NRules.IntegrationTests
                 When()
                     .Match<FactType1>(() => fact1, f => f.TestProperty.StartsWith("Valid"));
                 Then()
-                    .Yield(ctx => new FactType2 {TestProperty = fact1.ChainProperty}, (ctx, fact2) => Update(fact1, fact2))
+                    .Yield(ctx => Create(fact1), (ctx, fact2) => Update(fact1, fact2))
                     .Yield(ctx => new FactType3 {TestProperty = fact1.ChainProperty});
+            }
+
+            private static FactType2 Create(FactType1 fact1)
+            {
+                var fact2 = new FactType2 {TestProperty = fact1.ChainProperty};
+                return fact2;
             }
 
             private static FactType2 Update(FactType1 fact1, FactType2 fact2)
             {
                 fact2.TestProperty = fact1.ChainProperty;
-                fact2.Count++;
+                fact2.UpdateCount++;
                 return fact2;
             }
         }

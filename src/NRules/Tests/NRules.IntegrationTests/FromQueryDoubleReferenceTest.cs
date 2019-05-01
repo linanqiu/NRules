@@ -6,7 +6,7 @@ using Xunit;
 
 namespace NRules.IntegrationTests
 {
-    public class FromQueryDoubleReferenceTests : BaseRuleTestFixture
+    public class FromQueryDoubleReferenceTest : BaseRuleTestFixture
     {
         [Fact]
         public void FromDoubleReference_SplitByKey_FiresCorrectNumberOfTimesWithCorrectFactCounts()
@@ -81,6 +81,9 @@ namespace NRules.IntegrationTests
                         .Where(c => c.Any()))
                     .Query(() => factsOneTwo, q => q
                         .From(() => factsOne.Concat(factsTwo)));
+
+                Then()
+                    .Do(ctx => ctx.NoOp());
             }
         }
     }

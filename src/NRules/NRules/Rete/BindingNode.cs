@@ -18,7 +18,7 @@ namespace NRules.Rete
             Source.Attach(this);
         }
 
-        public override void PropagateAssert(IExecutionContext context, IList<Tuple> tuples)
+        public override void PropagateAssert(IExecutionContext context, List<Tuple> tuples)
         {
             var toAssert = new TupleFactList();
             foreach (var tuple in tuples)
@@ -28,7 +28,7 @@ namespace NRules.Rete
             MemoryNode.PropagateAssert(context, toAssert);
         }
 
-        public override void PropagateUpdate(IExecutionContext context, IList<Tuple> tuples)
+        public override void PropagateUpdate(IExecutionContext context, List<Tuple> tuples)
         {
             var toAssert = new TupleFactList();
             var toUpdate = new TupleFactList();
@@ -50,7 +50,7 @@ namespace NRules.Rete
             MemoryNode.PropagateAssert(context, toAssert);
         }
 
-        public override void PropagateRetract(IExecutionContext context, IList<Tuple> tuples)
+        public override void PropagateRetract(IExecutionContext context, List<Tuple> tuples)
         {
             var toRetract = new TupleFactList();
             foreach (var tuple in tuples)
@@ -64,7 +64,7 @@ namespace NRules.Rete
         {
             try
             {
-                var value = BindingExpression.Invoke(context, tuple);
+                var value = BindingExpression.Invoke(context, NodeInfo, tuple);
                 var fact = new Fact(value, ResultType);
                 tuple.SetState(this, fact);
                 toAssert.Add(tuple, fact);
@@ -83,7 +83,7 @@ namespace NRules.Rete
         {
             try
             {
-                var value = BindingExpression.Invoke(context, tuple);
+                var value = BindingExpression.Invoke(context, NodeInfo, tuple);
                 fact.RawObject = value;
                 toUpdate.Add(tuple, fact);
             }
